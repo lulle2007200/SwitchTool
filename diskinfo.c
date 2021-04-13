@@ -1,4 +1,5 @@
 #include "diskinfo.h"
+#include "llist.h"
 #include <ShlObj.h>
 #include <SetupAPI.h>
 #include <ntddstor.h>
@@ -270,19 +271,64 @@ BOOL GetSystemDriveNumbers(DWORD *numberSystemDrives, DWORD **systemDrives){
 	return(ret);
 }
 
+BOOL DiskIsReadOnly(BOOL *isReadOnly, LPSTR devPath){
+	HANDLE devHandle;
+	BOOL ret = FALSE;
+	devHandle = CreateFile(devPath,
+                           GENERIC_READ,
+                           FILE_SHARE_READ | FILE_SHARE_WRITE,
+                           NULL,
+                           OPEN_EXISTING,
+                           FILE_ATTRIBUTE_NORMAL,
+                           NULL);
+	if(devHandle == INVALID_HANDLE_VALUE){
+		LogError("CreateFile failed");
+		goto DiskIsReadOnly_cleanup;
+	}
+	BOOL result;
+	GET_DISK_ATTRIBUTES diskAttributes;
+	diskAttributes.Version = sizeof(GET_DISK_ATTRIBUTES);
+	DWORD bytesReturned;
+	DeviceIoControl(devHandle,
+	                IOCTL_DISK_IS_WRITABLE,
+	                NULL,
+	                0,
+	                NULL,
+	                0,
+	                &bytesReturned,
+	                NULL);
+	DWORD lastError = GetLastError();
+	if(lastError != ERROR_SUCCESS && lastError != ERROR_WRITE_PROTECT){
+		LogError("DeviceIoControl failed, %i");
+		goto DiskIsReadOnly_cleanup;
+	}
+	if(lastError == ERROR_WRITE_PROTECT){
+		*isReadOnly = TRUE;
+	}else{
+		*isReadOnly = FALSE;
+	}
+	ret = TRUE;
+	DiskIsReadOnly_cleanup:
+	if(devHandle != INVALID_HANDLE_VALUE){
+		CloseHandle(devHandle);
+	}
+	return(ret);
+}
+
 BOOL GetValidStorageDevices(llist_t *devList){
 	BOOL result;
+	BOOL ret = FALSE;
 	result = EnumerateDisks(devList);
 	if(result == FALSE){
 		LogError("EnumerateDisks failed");
-		return(FALSE);
+		goto GetValidStorageDevices_error;
 	}
 	DWORD numberSystemDrives;
 	DWORD *systemDrives;
 	result = GetSystemDriveNumbers(&numberSystemDrives, &systemDrives);
 	if(result == FALSE){
 		LogError("GetSystemDriveNumbers failed");
-		return(FALSE);
+		goto GetValidStorageDevices_error;
 	}
 	llist_node_t *current;
 	llistForEach(devList, current){
@@ -292,6 +338,15 @@ BOOL GetValidStorageDevices(llist_t *devList){
 			}
 		}
 	}
-
+	llistForEach(devList, current){
+		result = DiskIsReadOnly(&(((disk_info_t*)current)->isReadOnly), ((disk_info_t*)current)->devPath);
+		if(result == FALSE){
+			LogError("DiskIsReadOnly failed");
+			goto GetValidStorageDevices_error;
+		}
+	}
 	return(TRUE);
+	GetValidStorageDevices_error:
+	llistDeleteAll(devList, DiskInfoDelete);
+	return(FALSE);
 }

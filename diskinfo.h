@@ -13,6 +13,7 @@ typedef struct disk_info_s{
 	LPSTR			devPath;
 	DWORD			diskNumber;
 	LONGLONG		size;
+	BOOL			isReadOnly;
 }disk_info_t;
 
 BOOL GetValidStorageDevices(llist_t *devList);
