@@ -116,7 +116,7 @@ DWORD MenuShowAllCallback(void *data){
 		llistInsertHead(&menuList, (llist_node_t*)newEntry);
 	}
 	DWORD result = DisplayMenu(&menuList, MSG_SELECT_DEVICE);
-	return(MENU_SHOW_ALL);
+	return(result);
 }
 
 int main(int argc, char *argv[]){
