@@ -37,6 +37,12 @@ DWORD MenuEntryBack(void *data){
 }
 
 DWORD MenuDiskCallback(void *data){
+	disk_info_t *diskInfo = (disk_info_t*)data;
+	LogInfo(TEXT("current drive path: %s"), diskInfo->devPath);
+	LogInfo(TEXT("current drive manufactuer: %s"), diskInfo->manufacturer);
+	LogInfo(TEXT("current drive name: %s"), diskInfo->friendlyName);
+	LogInfo(TEXT("current drive isReadOnly: %i"), diskInfo->isReadOnly);
+	LogInfo(TEXT("current drive size: %llu"), diskInfo->size);
 	return(MENU_QUIT);
 }
 
@@ -116,6 +122,7 @@ DWORD MenuShowAllCallback(void *data){
 		llistInsertHead(&menuList, (llist_node_t*)newEntry);
 	}
 	DWORD result = DisplayMenu(&menuList, MSG_SELECT_DEVICE);
+	//TODO: delete menu list
 	return(result);
 }
 
@@ -135,6 +142,7 @@ int main(int argc, char *argv[]){
 		llist_t diskList;
 		llistInit(&diskList);
 		GetValidStorageDevices(&diskList);
+		//TODO: delete diskList
 
 		if(llistIsEmpty(&diskList)){
 			llist_t menuList;
@@ -173,21 +181,6 @@ int main(int argc, char *argv[]){
 
 	}while(result != MENU_QUIT);
 	return(1);
-
-	// llist_t hekateUmsDiskList;
-	// llistInit(&hekateUmsDiskList);
-	// GetHekateUmsDisks(&diskList, &hekateUmsDiskList);
-
-	// if(llistIsEmpty(&hekateUmsDiskList)){
-
-	// }else{
-	// 	disk_info_t *selectedDisk;
-	// 	if(llistGetLength(&hekateUmsDiskList) == 1){
-	// 		//selectedDisk = (disk_info_t*)llistGetHead(&hekateUmsDiskList);
-	// 	}else{
-	// 		//selectedDisk = SelectHekateDisk(&hekateUmsDiskList);
-	// 	}
-	// }
 
     return(1);
 }
