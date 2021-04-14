@@ -8,6 +8,8 @@
 #include <devpropdef.h>
 #include <Shlwapi.h>
 #include <PathCch.h>
+#include <stdlib.h>
+#include <vcruntime.h>
 
 int diskInfoCompareDevNumber(llist_node_t *diskInfo1, llist_node_t *diskInfo2){
 	if(((disk_info_t*)diskInfo1)->diskNumber > ((disk_info_t*)diskInfo2)->diskNumber){
@@ -42,13 +44,13 @@ BOOL GetDeviceProperty(HDEVINFO diskClassDevs,
 	                                   &requiredSize,
 	                                   0);
 	if(result == FALSE && GetLastError() != ERROR_INSUFFICIENT_BUFFER){
-		LogError("SetupDiGetDevicePropertyW");
-		return(FALSE);
+		LogError(TEXT("SetupDiGetDevicePropertyW failed"));
+		goto GetDeviceProperty_cleanup;
 	}
 	*devPropertyBuffer = malloc(requiredSize);
 	if(*devPropertyBuffer == NULL){
-		LogFatal("malloc failed");
-		return(FALSE);
+		LogFatal(TEXT("malloc failed"));
+		goto GetDeviceProperty_cleanup;
 	}
 	result = SetupDiGetDevicePropertyW(diskClassDevs,
 	                                   devInfoData,
@@ -59,11 +61,31 @@ BOOL GetDeviceProperty(HDEVINFO diskClassDevs,
 	                                   NULL,
 	                                   0);
 	if(result == FALSE){
-		LogError("SetupDiGetDevicePropertyW failed");
-		free(*devPropertyBuffer);
-		return(FALSE);
+		LogError(TEXT("SetupDiGetDevicePropertyW failed"));
+		goto GetDeviceProperty_cleanup;
 	}
+	#ifndef UNICODE
+	size_t bufferLength;
+	LPTSTR buffer;
+	if(wcstombs_s(&bufferLength, NULL, 0, *devPropertyBuffer, 0) != 0){
+		LogError(TEXT("wcstombs_s failed"));
+		goto GetDeviceProperty_cleanup;
+	}
+	buffer = malloc(requiredSize);
+	if(buffer == NULL){
+		LogFatal(TEXT("malloc failed"));
+		goto GetDeviceProperty_cleanup;
+	}
+	wcstombs_s(NULL, buffer, bufferLength, *devPropertyBuffer, bufferLength);
+
+	free(*devPropertyBuffer);
+	*devPropertyBuffer = buffer;
+	#endif
+
 	return(TRUE);
+	GetDeviceProperty_cleanup:
+	free(*devPropertyBuffer);
+	return(FALSE);
 }
 
 BOOL EnumerateDisks(llist_t *diskList){
@@ -72,7 +94,7 @@ BOOL EnumerateDisks(llist_t *diskList){
 	                                    NULL, NULL,
 	                                    DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
 	if(diskClassDevs == INVALID_HANDLE_VALUE){
-		LogError("SetupDiGetClassDevs failed");
+		LogError(TEXT("SetupDiGetClassDevs failed"));
 		return(FALSE);
 	}
 	SP_DEVICE_INTERFACE_DATA devInterfaceData;
@@ -93,12 +115,12 @@ BOOL EnumerateDisks(llist_t *diskList){
 		                                              &requiredSize,
 		                                              NULL);
 		if(result == FALSE && GetLastError() != ERROR_INSUFFICIENT_BUFFER){
-			LogError("SetupDiGetDeviceInterfaceDetail failed");
+			LogError(TEXT("SetupDiGetDeviceInterfaceDetail failed"));
 			goto error_cleanup_continue;
 		}
 		devInterfaceDetailData = malloc(requiredSize);
 		if(devInterfaceDetailData == NULL){
-			LogFatal("Failed to alloc memory");
+			LogFatal(TEXT("Failed to alloc memory"));
 			goto error_cleanup_continue;
 			//TODO: exit
 		}
@@ -112,7 +134,7 @@ BOOL EnumerateDisks(llist_t *diskList){
 		                                         NULL,
 		                                         &devInfoData);
 		if(result == FALSE){
-			LogError("SetupDiGetDeviceInterfaceDetail failed, %i, %i", GetLastError(), requiredSize);
+			LogError(TEXT("SetupDiGetDeviceInterfaceDetail failed"));
 			goto error_cleanup_continue;
 		}
 		DWORD devPathLength;
@@ -122,7 +144,7 @@ BOOL EnumerateDisks(llist_t *diskList){
 		diskInfo = (disk_info_t*)malloc(sizeof(disk_info_t));
 		diskInfo->devPath = malloc(devPathLength);
 		if(diskInfo->devPath == NULL){
-			LogFatal("Failed to alloc memory");
+			LogFatal(TEXT("Failed to alloc memory"));
 			goto error_cleanup_continue;
 		}
 		memcpy(diskInfo->devPath, devInterfaceDetailData->DevicePath, devPathLength);
@@ -135,7 +157,7 @@ BOOL EnumerateDisks(llist_t *diskList){
 		                       FILE_ATTRIBUTE_NORMAL,
 		                       NULL);
 		if(devHandle == INVALID_HANDLE_VALUE){
-			LogError("CreateFile failed");
+			LogError(TEXT("CreateFile failed"));
 			goto error_cleanup_continue;
 		}
 		DWORD bytesReturned;
@@ -149,6 +171,7 @@ BOOL EnumerateDisks(llist_t *diskList){
 		                         &bytesReturned,
 		                         NULL);
 		if(result == FALSE){
+			LogError(TEXT("DeviceIoControl failed"));
 			goto error_cleanup_continue;
 		}
 		diskInfo->diskNumber = diskNumber.DeviceNumber;
@@ -163,8 +186,26 @@ BOOL EnumerateDisks(llist_t *diskList){
 		                         &bytesReturned,
 		                         NULL);
 		if(result == FALSE){
-			LogError("DeviceIoControl failed");
+			LogError(TEXT("DeviceIoControl failed"));
 			goto error_cleanup_continue;
+		}
+		DeviceIoControl(devHandle,
+		                IOCTL_DISK_IS_WRITABLE,
+		                NULL,
+		                0,
+		                NULL,
+		                0,
+		                &bytesReturned,
+		                NULL);
+		DWORD lastError = GetLastError();
+		if(lastError != ERROR_SUCCESS && lastError != ERROR_WRITE_PROTECT){
+			LogError(TEXT("DeviceIoControl failed"));
+			goto error_cleanup_continue;
+		}
+		if(lastError == ERROR_WRITE_PROTECT){
+			diskInfo->isReadOnly = TRUE;
+		}else{
+			diskInfo->isReadOnly = FALSE;
 		}
 		diskInfo->size = diskCapacityInfo.DiskLength.QuadPart;
 		result = GetDeviceProperty(diskClassDevs,
@@ -172,7 +213,7 @@ BOOL EnumerateDisks(llist_t *diskList){
 		                           &DEVPKEY_Device_FriendlyName,
 		                           (LPVOID)&(diskInfo->friendlyName));
 		if(result == FALSE){
-			LogError("GetDeviceProperty failed");
+			LogError(TEXT("GetDeviceProperty failed"));
 			goto error_cleanup_continue;
 
 		}
@@ -181,7 +222,7 @@ BOOL EnumerateDisks(llist_t *diskList){
 		                           &DEVPKEY_Device_Manufacturer,
 		                           (LPVOID)&(diskInfo->manufacturer));
 		if(result == FALSE){
-			LogError("GetDeviceProperty failed");
+			LogError(TEXT("GetDeviceProperty failed"));
 			goto error_cleanup_continue;
 		}
 
@@ -210,7 +251,7 @@ BOOL GetSystemDriveNumbers(DWORD *numberSystemDrives, DWORD **systemDrives){
 	WCHAR volumePath[MAX_PATH];
 	result = GetVolumeNameForVolumeMountPointW(systemPath, volumePath, MAX_PATH);
 	if(result == FALSE){
-		LogError("GetVolumeNameForVolumeMountPointW failed");
+		LogError(TEXT("GetVolumeNameForVolumeMountPointW failed"));
 		goto GetSystemDriveNumbers_cleanup;
 	}
 	volumePath[lstrlenW(volumePath)-1] = 0;
@@ -223,7 +264,7 @@ BOOL GetSystemDriveNumbers(DWORD *numberSystemDrives, DWORD **systemDrives){
                             FILE_ATTRIBUTE_NORMAL,
                             NULL);
 	if(devHandle == INVALID_HANDLE_VALUE){
-		LogError("CreateFile failed");
+		LogError(TEXT("CreateFile failed"));
 		goto GetSystemDriveNumbers_cleanup;
 	}
 	VOLUME_DISK_EXTENTS *volumeInfo = NULL;
@@ -235,7 +276,7 @@ BOOL GetSystemDriveNumbers(DWORD *numberSystemDrives, DWORD **systemDrives){
 		free(volumeInfo);
 		volumeInfo = malloc(volumeInfoSize);
 		if(volumeInfo == NULL){
-			LogFatal("malloc failed");
+			LogFatal(TEXT("malloc failed"));
 			goto GetSystemDriveNumbers_cleanup;
 		}
 		result = DeviceIoControl(devHandle,
@@ -251,14 +292,13 @@ BOOL GetSystemDriveNumbers(DWORD *numberSystemDrives, DWORD **systemDrives){
 	}while(result != TRUE &&
 	      (GetLastError() == ERROR_INSUFFICIENT_BUFFER || GetLastError() == ERROR_MORE_DATA) &&
 	      tries <= 5);
-	CloseHandle(devHandle);
 	if(result == FALSE){
-		LogError("DeviceIoControl failed");
+		LogError(TEXT("DeviceIoControl failed"));
 		goto GetSystemDriveNumbers_cleanup;
 	}
 	*systemDrives = malloc(volumeInfo->NumberOfDiskExtents * sizeof(DWORD));
 	if(*systemDrives == NULL){
-		LogFatal("malloc failed");
+		LogFatal(TEXT("malloc failed"));
 		goto GetSystemDriveNumbers_cleanup;
 	}
 	*numberSystemDrives = volumeInfo->NumberOfDiskExtents;
@@ -267,51 +307,10 @@ BOOL GetSystemDriveNumbers(DWORD *numberSystemDrives, DWORD **systemDrives){
 	}
 	ret = TRUE;
 	GetSystemDriveNumbers_cleanup:
-	free(volumeInfo);
-	return(ret);
-}
-
-BOOL DiskIsReadOnly(BOOL *isReadOnly, LPSTR devPath){
-	HANDLE devHandle;
-	BOOL ret = FALSE;
-	devHandle = CreateFile(devPath,
-                           GENERIC_READ,
-                           FILE_SHARE_READ | FILE_SHARE_WRITE,
-                           NULL,
-                           OPEN_EXISTING,
-                           FILE_ATTRIBUTE_NORMAL,
-                           NULL);
-	if(devHandle == INVALID_HANDLE_VALUE){
-		LogError("CreateFile failed");
-		goto DiskIsReadOnly_cleanup;
-	}
-	BOOL result;
-	GET_DISK_ATTRIBUTES diskAttributes;
-	diskAttributes.Version = sizeof(GET_DISK_ATTRIBUTES);
-	DWORD bytesReturned;
-	DeviceIoControl(devHandle,
-	                IOCTL_DISK_IS_WRITABLE,
-	                NULL,
-	                0,
-	                NULL,
-	                0,
-	                &bytesReturned,
-	                NULL);
-	DWORD lastError = GetLastError();
-	if(lastError != ERROR_SUCCESS && lastError != ERROR_WRITE_PROTECT){
-		LogError("DeviceIoControl failed, %i");
-		goto DiskIsReadOnly_cleanup;
-	}
-	if(lastError == ERROR_WRITE_PROTECT){
-		*isReadOnly = TRUE;
-	}else{
-		*isReadOnly = FALSE;
-	}
-	ret = TRUE;
-	DiskIsReadOnly_cleanup:
 	if(devHandle != INVALID_HANDLE_VALUE){
 		CloseHandle(devHandle);
 	}
+	free(volumeInfo);
 	return(ret);
 }
 
@@ -320,14 +319,14 @@ BOOL GetValidStorageDevices(llist_t *devList){
 	BOOL ret = FALSE;
 	result = EnumerateDisks(devList);
 	if(result == FALSE){
-		LogError("EnumerateDisks failed");
+		LogError(TEXT("EnumerateDisks failed"));
 		goto GetValidStorageDevices_error;
 	}
 	DWORD numberSystemDrives;
 	DWORD *systemDrives;
 	result = GetSystemDriveNumbers(&numberSystemDrives, &systemDrives);
 	if(result == FALSE){
-		LogError("GetSystemDriveNumbers failed");
+		LogError(TEXT("GetSystemDriveNumbers failed"));
 		goto GetValidStorageDevices_error;
 	}
 	llist_node_t *current;
@@ -338,13 +337,7 @@ BOOL GetValidStorageDevices(llist_t *devList){
 			}
 		}
 	}
-	llistForEach(devList, current){
-		result = DiskIsReadOnly(&(((disk_info_t*)current)->isReadOnly), ((disk_info_t*)current)->devPath);
-		if(result == FALSE){
-			LogError("DiskIsReadOnly failed");
-			goto GetValidStorageDevices_error;
-		}
-	}
+	free(systemDrives);
 	return(TRUE);
 	GetValidStorageDevices_error:
 	llistDeleteAll(devList, DiskInfoDelete);

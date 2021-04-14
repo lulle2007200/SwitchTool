@@ -8,9 +8,9 @@
 typedef struct disk_info_s{
 	llist_node_t 	*next;
 	llist_node_t 	*prev;
-	LPSTR			manufacturer;
-	LPSTR			friendlyName;
-	LPSTR			devPath;
+	LPTSTR			manufacturer;
+	LPTSTR			friendlyName;
+	LPTSTR			devPath;
 	DWORD			diskNumber;
 	LONGLONG		size;
 	BOOL			isReadOnly;

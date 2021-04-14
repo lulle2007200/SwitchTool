@@ -5,6 +5,8 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <time.h>
+#include <Windows.h>
+#include <tchar.h>
 
 typedef enum log_level_e {LOG_LEVEL_FATAL,
 						  LOG_LEVEL_ERROR, 
@@ -16,9 +18,9 @@ typedef enum log_level_e {LOG_LEVEL_FATAL,
 
 typedef struct log_log_event_s{
 	void 		*privateData;
-	const char 	*file;
+	const TCHAR	*file;
 	int 		line;
-	const char 	*logMsg;
+	const TCHAR	*logMsg;
 	log_level_t logLevel;
 	time_t 		logTime;
 	va_list 	vaList;
@@ -39,24 +41,24 @@ bool LogAddCallback(void *const privateData,
 void LogSetQuiet(bool quiet);
 
 void Log(const log_level_t logLevel,
-         const char *const file,
+         const TCHAR *const file,
          const int line,
-         const char *const logMsg,
+         const TCHAR *const logMsg,
          ...);
 
 #define LogFatal(log_msg, ...) \
-	Log(LOG_LEVEL_FATAL, __FILE__, __LINE__, log_msg, __VA_ARGS__)
+	Log(LOG_LEVEL_FATAL, TEXT(__FILE__), __LINE__, log_msg, __VA_ARGS__)
 #define LogError(log_msg, ...) \
-	Log(LOG_LEVEL_ERROR, __FILE__, __LINE__, log_msg, __VA_ARGS__)
+	Log(LOG_LEVEL_ERROR, TEXT(__FILE__), __LINE__, log_msg, __VA_ARGS__)
 #define LogWarning(log_msg, ...) \
-	Log(LOG_LEVEL_WARNING, __FILE__, __LINE__, log_msg, __VA_ARGS__)
+	Log(LOG_LEVEL_WARNING, TEXT(__FILE__), __LINE__, log_msg, __VA_ARGS__)
 #define LogInfo(log_msg, ...) \
-	Log(LOG_LEVEL_INFO, __FILE__, __LINE__, log_msg, __VA_ARGS__)
+	Log(LOG_LEVEL_INFO, TEXT(__FILE__), __LINE__, log_msg, __VA_ARGS__)
 #define LogDebug(log_msg, ...) \
-	Log(LOG_LEVEL_DEBUG, __FILE__, __LINE__, log_msg, __VA_ARGS__)
+	Log(LOG_LEVEL_DEBUG, TEXT(__FILE__), __LINE__, log_msg, __VA_ARGS__)
 #define LogTrace(log_msg, ...) \
-	Log(LOG_LEVEL_TRACE, __FILE__, __LINE__, log_msg, __VA_ARGS__)
+	Log(LOG_LEVEL_TRACE, TEXT(__FILE__), __LINE__, log_msg, __VA_ARGS__)
 #define LogVerbose(log_msg, ...) \
-	Log(LOG_LEVEL_VERBOSE, __FILE__, __LINE__, log_msg, __VA_ARGS__)
+	Log(LOG_LEVEL_VERBOSE, TEXT(__FILE__), __LINE__, log_msg, __VA_ARGS__)
 
 #endif

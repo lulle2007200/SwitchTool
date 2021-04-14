@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <time.h>
+#include <tchar.h>
+#include <Windows.h>
 
 #include "log.h"
 
@@ -21,7 +23,7 @@ typedef struct log_state_s{
 	bool			quiet;
 }log_state_t;
 
-typedef char log_time_str_t[20];
+typedef TCHAR log_time_str_t[20];
 
 static log_state_t gLogState = {
 	.logLevel = LOG_LEVEL_VERBOSE,
@@ -30,13 +32,13 @@ static log_state_t gLogState = {
 	.quiet = true,
 };
 
-static const char *gLogLevelStr[] = {[LOG_LEVEL_FATAL] = "FATAL",
-						 			 [LOG_LEVEL_ERROR] = "ERROR",
-						 			 [LOG_LEVEL_WARNING] = "WARNING",
-						 			 [LOG_LEVEL_INFO] = "INFO",
-						 			 [LOG_LEVEL_DEBUG] = "DEBUG",
-						 			 [LOG_LEVEL_TRACE] = "TRACE",
-						 			 [LOG_LEVEL_VERBOSE] = "VERBOSE"};
+static const TCHAR *gLogLevelStr[] = {[LOG_LEVEL_FATAL] = TEXT("FATAL"),
+						 			  [LOG_LEVEL_ERROR] = TEXT("ERROR"),
+						 			  [LOG_LEVEL_WARNING] = TEXT("WARNING"),
+						 			  [LOG_LEVEL_INFO] = TEXT("INFO"),
+						 			  [LOG_LEVEL_DEBUG] = TEXT("DEBUG"),
+						 			  [LOG_LEVEL_TRACE] = TEXT("TRACE"),
+						 			  [LOG_LEVEL_VERBOSE] = TEXT("VERBOSE")};
 
 
 bool LogAddCallback(void *const privateData,
@@ -55,32 +57,32 @@ bool LogAddCallback(void *const privateData,
 void LogGetLogTimeStr(log_time_str_t logTimeStr, time_t logTime){
 	struct tm tmTime;
 	localtime_s(&tmTime, &logTime);
-	strftime(logTimeStr, 
+	_tcsftime(logTimeStr,
 	         sizeof(log_time_str_t), 
-	         "%d-%m-%Y %H:%M:%S", &tmTime);
+	         TEXT("%d-%m-%Y %H:%M:%S"), &tmTime);
 }
 
 void LogDefaultStreamCallback(const log_log_event_t *const logEvent){
 	log_time_str_t logTimeStr;
 	LogGetLogTimeStr(logTimeStr, 
 	                 logEvent->logTime);
-	fprintf(logEvent->privateData, 
-	        "[%s] [%s] %s:%i:", 
-	        logTimeStr, 
-	        gLogLevelStr[logEvent->logLevel],
-	        logEvent->file,
-	        logEvent->line);
-	vfprintf(logEvent->privateData,
-	         logEvent->logMsg,
-	         logEvent->vaList);
-	fprintf(logEvent->privateData,
-	        "\n");
+	_ftprintf(logEvent->privateData,
+	          TEXT("[%s] [%s] %s:%i:"),
+	          logTimeStr,
+	          gLogLevelStr[logEvent->logLevel],
+	          logEvent->file,
+	          logEvent->line);
+	_vftprintf(logEvent->privateData,
+	          logEvent->logMsg,
+	          logEvent->vaList);
+	_ftprintf(logEvent->privateData,
+	          TEXT("\n"));
 }
 
 void Log(const log_level_t logLevel,
-         const char *const file,
+         const TCHAR *const file,
          const int line,
-         const char *const logMsg,
+         const TCHAR *const logMsg,
          ...){
 	log_log_event_t logEvent = {
 		.file = file,
@@ -111,7 +113,7 @@ void LogSetLogLevel(const log_level_t logLevel){
 	gLogState.logLevel = logLevel;
 }
 
-const char *LogGetLogLevelStr(log_level_t logLevel){
+const TCHAR *LogGetLogLevelStr(log_level_t logLevel){
 	return(gLogLevelStr[logLevel]);
 }
 
