@@ -1,8 +1,10 @@
 #include <Windows.h>
+#include <string.h>
 #include <tchar.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <Shlwapi.h>
+#include <vcruntime.h>
 
 #include "log.h"
 #include "llist.h"
@@ -19,6 +21,11 @@ typedef struct menu_entry_s{
 	menu_entry_callback menuEntryCallback;
 	void *data;
 }menu_entry_t;
+
+typedef struct menu_restore_info_s{
+	LPTSTR defaultFilename;
+	disk_info_t *diskInfo;
+}menu_restore_info_t;
 
 typedef enum menu_common_entries_e {MENU_QUIT, MENU_CONTINUE, MENU_BACK, MENU_REFRESH, MENU_SHOW_ALL} menu_common_entries_t;
 
@@ -46,6 +53,7 @@ DWORD MenuDiskCallback(void *data){
 	return(MENU_QUIT);
 }
 
+DWORD TestCallback(void *data);
 
 
 
@@ -116,13 +124,136 @@ DWORD MenuShowAllCallback(void *data){
 	llistForEach(diskList, current){
 		menu_entry_t *newEntry;
 		newEntry = malloc(sizeof(menu_entry_t));
-		newEntry->menuEntryCallback = MenuDiskCallback;
+		newEntry->menuEntryCallback = TestCallback;
+		//TODO: more info in menu entry string (size, serial etc.)
 		newEntry->menuEntryString = ((disk_info_t*)current)->friendlyName;
 		newEntry->data = current;
 		llistInsertHead(&menuList, (llist_node_t*)newEntry);
 	}
 	DWORD result = DisplayMenu(&menuList, MSG_SELECT_DEVICE);
-	//TODO: delete menu list
+
+	return(result);
+}
+
+DWORD MenuRestoreFromFileCallback(void *data){
+
+}
+
+typedef enum hekate_disk_type_e {
+	HEKATE_TYPE_SD_RAW = 0,
+	HEKATE_TYPE_EMMC_GPP,
+	HEKATE_TYPE_EMMC_BOOT0,
+	HEKATE_TYPE_EMMC_BOOT1,
+	HEKATE_TYPE_EMUMMC_GPP,
+	HEKATE_TYPE_EMUMMC_BOOT0,
+	HEKATE_TYPE_EMUMMC_BOOT1,
+	HEKATE_TYPE_COUNT,
+	HEKATE_TYPE_UNK
+}hekate_disk_type_t;
+
+static const LPTSTR gHekateDiskTypeNames[] = {
+	[HEKATE_TYPE_SD_RAW] = TEXT("hekate SD RAW USB Device"),
+	[HEKATE_TYPE_EMMC_GPP] = TEXT("hekate eMMC GPP USB Device"),
+	[HEKATE_TYPE_EMMC_BOOT0] = TEXT("hekate eMMC BOOT0 USB Device"),
+	[HEKATE_TYPE_EMMC_BOOT1] = TEXT("hekate eMMC BOOT1 USB Device"),
+	[HEKATE_TYPE_EMUMMC_GPP] = TEXT("hekate SD GPP USB Device"),
+	[HEKATE_TYPE_EMUMMC_BOOT0] = TEXT("hekate SD BOOT0 USB Device"),
+	[HEKATE_TYPE_EMUMMC_BOOT1] = TEXT("hekate SD BOOT1 USB Device")
+};
+
+static const LPTSTR gHekateDefaultBackupFileNames[] = {
+	[HEKATE_TYPE_SD_RAW] = TEXT("SD_Raw.img"),
+	[HEKATE_TYPE_EMMC_GPP] = TEXT("GPP.img"),
+	[HEKATE_TYPE_EMMC_BOOT0] = TEXT("BOOT0.img"),
+	[HEKATE_TYPE_EMMC_BOOT1] = TEXT("BOOT1.img"),
+	[HEKATE_TYPE_EMUMMC_GPP] = TEXT("GPP.img"),
+	[HEKATE_TYPE_EMUMMC_BOOT0] = TEXT("BOOT0.img"),
+	[HEKATE_TYPE_EMUMMC_BOOT1] = TEXT("BOOT1.img")
+};
+
+hekate_disk_type_t GetHekateDiskType(LPTSTR diskName){
+	hekate_disk_type_t result = HEKATE_TYPE_UNK;
+	for(DWORD i = 0; i < (DWORD)HEKATE_TYPE_COUNT; i++){
+		if(_tcsstr(diskName, gHekateDiskTypeNames[i]) != NULL){
+			result = (hekate_disk_type_t)i;
+			break;
+		}
+	}
+	return(result);
+}
+
+typedef struct backup_info_s{
+	LPTSTR defaultFileName;
+	disk_info_t *diskInfo;
+}backup_info_t;
+
+
+
+DWORD TestCallback(void *data){
+	disk_info_t *diskInfo = data;
+	HANDLE diskHandle;
+	diskHandle = CreateFile(diskInfo->devPath,
+	                        GENERIC_READ | GENERIC_WRITE,
+	                        FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
+	                        NULL,
+	                        OPEN_EXISTING,
+	                        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN,
+	                        NULL);
+	if(diskHandle == INVALID_HANDLE_VALUE){
+		LogInfo(TEXT("InvalidHandle"));
+		return(MENU_QUIT);
+	}
+	UINT8 buffer[512*2*1024] = {0};
+	DWORD bytesWritten;
+	DWORD count = 0;
+	//while(WriteFile(diskHandle, buffer, 512, &bytesWritten, NULL) == TRUE && count < 2048) { count++; LogInfo(TEXT("count: %i, error: %i"), count, GetLastError());}
+	//bytesWritten = DeviceIoControl(diskHandle, IOCTL_DISK_UPDATE_PROPERTIES, NULL, 0, NULL, 0, &bytesWritten, NULL);
+	LogInfo(TEXT("error: %i"), bytesWritten);
+	while(WriteFile(diskHandle, buffer, 512*2*1024, &bytesWritten, NULL) == TRUE) { count++; LogInfo(TEXT("count: %i, error: %i"), count, GetLastError());}
+	LogInfo(TEXT("count: %i, error: %i"), count, GetLastError());
+	return(MENU_QUIT);
+}
+
+DWORD MenuBackupToFileCallback(void *data){
+	backup_info_t *backupInfo = data;
+	HANDLE diskHandle;
+	diskHandle = CreateFile(backupInfo->diskInfo->devPath,
+	                        GENERIC_READ,
+	                        0,
+	                        NULL,
+	                        OPEN_EXISTING,
+	                        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN,
+	                        NULL);
+	if(diskHandle == INVALID_HANDLE_VALUE){
+		LogInfo(TEXT("failed to open disk"));
+	}
+
+	TCHAR filePath[MAX_PATH];
+	PathCombine(filePath, TEXT(".\\"), backupInfo->defaultFileName);
+	HANDLE fileHandle = CreateDummyFile(filePath, 1024*1024);//backupInfo->diskInfo->size);
+	LogInfo(TEXT("dummyfile %i"), GetLastError());
+
+
+	return(MENU_QUIT);
+}
+
+DWORD MenuHekateDiskCallback(void *data){
+	disk_info_t *diskInfo = (disk_info_t*)data;
+	hekate_disk_type_t hekateDiskType = GetHekateDiskType(diskInfo->friendlyName);
+	llist_t menuList;
+	llistInit(&menuList);
+
+	backup_info_t backupInfo;
+	backupInfo.diskInfo = diskInfo;
+	backupInfo.defaultFileName = gHekateDefaultBackupFileNames[hekateDiskType];
+	menu_entry_t menuBackup;
+	menuBackup.menuEntryString = MSG_BACKUP_TO_FILE;
+	menuBackup.menuEntryCallback = MenuBackupToFileCallback;
+	menuBackup.data = &backupInfo;
+
+	llistInsertHead(&menuList, (llist_node_t*)&menuBackup);
+
+	DWORD result = DisplayMenu(&menuList, TEXT("Select action"));
 	return(result);
 }
 
@@ -159,25 +290,47 @@ int main(int argc, char *argv[]){
 		}
 
 		llist_t hekateDisks;
+		llistInit(&hekateDisks);
 		GetHekateUmsDisks(&diskList, &hekateDisks);
-		if(llistIsEmpty(&hekateDisks) == FALSE){
-			llist_t menuList;
-			llistInit(&menuList);
-			llistInsertHead(&menuList, (llist_node_t*)&gMenuEntries[MENU_QUIT]);
-			llistInsertHead(&menuList, (llist_node_t*)&gMenuEntries[MENU_REFRESH]);
-			menu_entry_t menuShowAll;
-			menuShowAll.menuEntryCallback = MenuShowAllCallback;
-			menuShowAll.menuEntryString = MSG_SHOW_ALL;
-			menuShowAll.data = &diskList;
-			llistInsertHead(&menuList, (llist_node_t*)&menuShowAll);
-			result = DisplayMenu(&menuList, MSG_NO_HEKATE_DEVICES);
-			switch(result){
-				case MENU_REFRESH:
-					continue;
-				case MENU_QUIT:
-					return(0);
+
+		llist_t menuList;
+		llistInit(&menuList);
+		LPTSTR menuTitle = MSG_NO_HEKATE_DEVICES;
+		if(llistGetLength(&hekateDisks) == 1){
+			TCHAR menuString[200];
+			disk_info_t *hekateDiskInfo = (disk_info_t*)llistGetHead(&hekateDisks);
+			_stprintf_s(menuString, 200, MSG_SINGLE_HEKATE_DEVICE, hekateDiskInfo->friendlyName);
+			menuTitle = menuString;
+			menu_entry_t hekateDisk;
+			hekateDisk.menuEntryString = MSG_CONTINUE;
+			hekateDisk.menuEntryCallback = MenuHekateDiskCallback;
+			hekateDisk.data = hekateDiskInfo;
+			llistInsertHead(&menuList, (llist_node_t*)&hekateDisk);
+		}else if(llistGetLength(&hekateDisks) > 1){
+			menuTitle = MSG_MULTIPLE_HEKATE_DEVICES;
+			llist_node_t *current;
+			llistForEach(&hekateDisks, current){
+				menu_entry_t *newEntry;
+				newEntry = malloc(sizeof(menu_entry_t));
+				newEntry->menuEntryCallback = MenuHekateDiskCallback;
+				newEntry->menuEntryString = ((disk_info_t*)current)->friendlyName;
+				newEntry->data = current;
+				llistInsertHead(&menuList, (llist_node_t*)newEntry);
 			}
 		}
+		menu_entry_t menuShowAll;
+		menuShowAll.menuEntryCallback = MenuShowAllCallback;
+		menuShowAll.menuEntryString = MSG_SHOW_ALL;
+		menuShowAll.data = &diskList;
+		if(llistIsEmpty(&diskList) == false){
+			llistInsertTail(&menuList, (llist_node_t*)&menuShowAll);
+		}
+		llistInsertTail(&menuList, (llist_node_t*)&gMenuEntries[MENU_REFRESH]);
+		llistInsertTail(&menuList, (llist_node_t*)&gMenuEntries[MENU_QUIT]);
+		result = DisplayMenu(&menuList, menuTitle);
+
+
+
 
 	}while(result != MENU_QUIT);
 	return(1);

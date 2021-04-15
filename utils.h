@@ -4,5 +4,6 @@
 #include <Windows.h>
 
 BOOL IsElevated();
+HANDLE CreateDummyFile(LPTSTR filePath, LONGLONG size);
 
 #endif

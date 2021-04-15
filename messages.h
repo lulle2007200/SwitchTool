@@ -18,5 +18,17 @@
 #define MSG_NO_HEKATE_DEVICES TEXT("No heaktae UMS device found.")
 #define MSG_SHOW_ALL TEXT("List other storage devices (careful, be sure to select the right device)")
 #define MSG_SELECT_DEVICE TEXT("Select storage device.")
+#define MSG_MULTIPLE_HEKATE_DEVICES TEXT("Found multiple hekate UMS devices, select device.")
+#define MSG_SINGLE_HEKATE_DEVICE TEXT("Found %s.")
+#define MSG_SELECT_ACTION TEXT("Select option for %s.")
+#define MSG_RESTORE_FROM_FILE TEXT("Restore from file")
+
+#define MSG_BACKUP_TO_FILE TEXT("Backup to file")
+
+
+
+
+#define MSG_BOOT0_BACKUP_FILENAME TEXT("BOOT0.img")
+#define MSG_BOOT1_BACKUP_FILENAME TEXT("BOOT1.img")
 
 #endif
