@@ -136,7 +136,7 @@ DWORD MenuShowAllCallback(void *data){
 }
 
 DWORD MenuRestoreFromFileCallback(void *data){
-
+	return(1);
 }
 
 typedef enum hekate_disk_type_e {

@@ -106,9 +106,8 @@ void llistDeleteTail(llist_t *list, llist_delete_callback deleteCallback){
 }
 
 void llistDeleteAll(llist_t *list, llist_delete_callback *deleteCallback){
-	llist_node_t *current;
-	llistForEach(list, current){
-		deleteCallback(current);
+	while(llistIsEmpty(list) == false){
+		llistDeleteHead(list, deleteCallback);
 	}
 	llistInit(list);
 }
